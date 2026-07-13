@@ -6,7 +6,7 @@ class Streamer(ABC):
     def connect(self): pass
 
     @abstractmethod
-    def send(self, filepath: str): pass
+    def send(self, filepath): pass
 
     @abstractmethod
     def close(self): pass

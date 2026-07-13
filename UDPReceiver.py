@@ -1,9 +1,11 @@
 import socket
 import struct
+import wave
 import numpy as np
 import matplotlib.pyplot as plt
 from interfaces.base_receiver import Receiver
 from fft_utils import fft
+from noise_filter import filter_noise, compute_snr
 
 
 class UDPReceiver(Receiver):
@@ -13,7 +15,7 @@ class UDPReceiver(Receiver):
         self.buffer_size = buffer_size
         self.socket = None
         self.audio = None
-        self.n_frames = None
+        self.filtered_audio = None
         self.fs = None
 
     def start(self):
@@ -23,8 +25,7 @@ class UDPReceiver(Receiver):
 
     def receive(self):
         header_data, _ = self.socket.recvfrom(self.buffer_size)
-        total_chunks, fs, n_frames, sampwidth = struct.unpack("!IIII", header_data)
-        self.n_frames = n_frames
+        total_chunks, fs, sampwidth = struct.unpack("!III", header_data)
         self.fs = fs
 
         width_to_dtype = {1: np.int8, 2: np.int16, 4: np.int32}
@@ -32,7 +33,6 @@ class UDPReceiver(Receiver):
 
         print(f"Получен заголовок: {total_chunks} пакетов, "
               f"fs={fs}, "
-              f"n_frames={n_frames}, "
               f"sampwidth={sampwidth}, "
               f"dtype={dtype.__name__}")
 
@@ -56,17 +56,33 @@ class UDPReceiver(Receiver):
             self.socket.close()
             print("Соединение закрыто")
 
-    def plot_audio(self):
-        t = np.arange(self.n_frames) / self.fs
+    def filter_audio(self):
+        filtered_audio = filter_noise(self.audio)
+        self.filtered_audio = filtered_audio
 
-        plt.plot(t, self.audio)
-        plt.xlabel("Время, c")
-        plt.ylabel("Амплитуда")
-        plt.title("Аудио")
-        plt.savefig("results/audio.png")
-        plt.show()
+        filtered_audio_int16 = filtered_audio.astype(np.int16)
+        with wave.open("audio/filtered_audio.wav", "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(self.fs)
+            wf.writeframes(filtered_audio_int16.tobytes())
 
-    def plot_spectrum(self):
+    def plot_comparison(self):
+        fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+
+        t = np.arange(len(self.audio)) / self.fs
+
+        axes[0, 0].plot(t, self.audio)
+        axes[0, 0].set_xlabel("Время, c")
+        axes[0, 0].set_ylabel("Амплитуда")
+        axes[0, 0].set_title("Исходное аудио")
+
+        t = np.arange(len(self.filtered_audio)) / self.fs
+
+        axes[0, 1].plot(t, self.filtered_audio)
+        axes[0, 1].set_xlabel("Время, c")
+        axes[0, 1].set_ylabel("Амплитуда")
+        axes[0, 1].set_title("Отфильтрованное аудио")
 
         N = 2 ** int(np.ceil(np.log2(len(self.audio))))
         audio_padded = np.zeros(N)
@@ -75,11 +91,28 @@ class UDPReceiver(Receiver):
         X = fft(audio_padded)
 
         freqs = (np.arange(N) - N // 2) * self.fs / N
-        plt.plot(freqs, np.abs(np.roll(X, N // 2)))
-        plt.xlabel("Частота, Гц")
-        plt.ylabel("Амплитуда")
-        plt.title("Спектр")
-        plt.savefig("results/spectrum.png")
+        axes[1, 0].plot(freqs, np.abs(np.roll(X, N // 2)))
+        axes[1, 0].set_xlabel("Частота, Гц")
+        axes[1, 0].set_ylabel("Амплитуда")
+        axes[1, 0].set_title("Спектр исходного аудио")
+
+        N = 2 ** int(np.ceil(np.log2(len(self.filtered_audio))))
+        audio_padded = np.zeros(N)
+        audio_padded[:len(self.filtered_audio)] = self.filtered_audio
+
+        X = fft(audio_padded)
+
+        freqs = (np.arange(N) - N // 2) * self.fs / N
+        axes[1, 1].plot(freqs, np.abs(np.roll(X, N // 2)))
+        axes[1, 1].set_xlabel("Частота, Гц")
+        axes[1, 1].set_ylabel("Амплитуда")
+        axes[1, 1].set_title("Спектр отфильтрованного аудио")
+
+        snr = compute_snr(self.filtered_audio, self.audio - self.filtered_audio)
+
+        fig.suptitle(f"SNR = {snr}")
+        plt.tight_layout(h_pad=3.0)
+        plt.savefig("results/comparison.png")
         plt.show()
 
 if __name__ == "__main__":
@@ -87,5 +120,5 @@ if __name__ == "__main__":
     receiver.start()
     receiver.receive()
     receiver.close()
-    receiver.plot_audio()
-    receiver.plot_spectrum()
+    receiver.filter_audio()
+    receiver.plot_comparison()

@@ -12,11 +12,11 @@ class UDPStreamer(Streamer):
         self.chunk_size = chunk_size
         self.socket = None
 
-    def connect(self) -> None:
+    def connect(self):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         print(f"Streamer подключён: {self.host}:{self.port}")
 
-    def send(self, filepath: str) -> None:
+    def send(self, filepath):
         with wave.open(filepath, "rb") as f:
             fs = f.getframerate()
             sampwidth = f.getsampwidth()
@@ -26,7 +26,7 @@ class UDPStreamer(Streamer):
         chunks = [raw[i:i + self.chunk_size] for i in range(0, len(raw), self.chunk_size)]
         total_chunks = len(chunks)
 
-        header = struct.pack("!IIII", total_chunks, fs, n_frames, sampwidth)
+        header = struct.pack("!III", total_chunks, fs, sampwidth)
         self.socket.sendto(header, (self.host, self.port))
         print(f"Отправлен заголовок: {total_chunks} пакетов, fs={fs}")
         time.sleep(0.01)
@@ -39,7 +39,7 @@ class UDPStreamer(Streamer):
         self.socket.sendto(b"END", (self.host, self.port))
         print("Передача завершена")
 
-    def close(self) -> None:
+    def close(self):
         if self.socket:
             self.socket.close()
             print("Соединение закрыто")
@@ -48,5 +48,5 @@ class UDPStreamer(Streamer):
 if __name__ == "__main__":
     streamer = UDPStreamer()
     streamer.connect()
-    streamer.send("audio/new.wav")
+    streamer.send("audio/audio.wav")
     streamer.close()

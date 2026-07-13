@@ -9,10 +9,10 @@ class Receiver(ABC):
     def receive(self): pass
 
     @abstractmethod
-    def plot_spectrum(self): pass
-
-    @abstractmethod
-    def plot_audio(self): pass
-
-    @abstractmethod
     def close(self): pass
+
+    @abstractmethod
+    def filter_audio(self): pass
+
+    @abstractmethod
+    def plot_comparison(self): pass
